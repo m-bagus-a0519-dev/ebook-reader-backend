@@ -1,11 +1,15 @@
 const path = require('path');
+
 const EPub = require("node-epub");
 const { fileTypeFromBuffer } = require('file-type');
+
+//const poppler = require('pdf-poppler');
+
 
 const UPLOAD_DIR = path.join(__dirname, '../uploads');
 const ALLOWED_MIMES = ["application/pdf", "application/epub+zip"];
 
-// Validasi tipe file
+// Validasi tipe file menggunakan magic numbers
 const validateFile = async (buffer) => {
   const type = await fileTypeFromBuffer(buffer);
   if (type && ALLOWED_MIMES.includes(type.mime)) {
@@ -14,22 +18,26 @@ const validateFile = async (buffer) => {
   return { isValid: false, error: `Invalid file type: ${type ? type.mime : 'unknown'}` };
 };
 
-// Ekstrak metadata dari PDF (menggunakan node-poppler)
+// Ekstrak metadata dari PDF
 const extractPdfMetadata = async (filePath) => {
   try {
-    // 1. Muat library baru (ESM)
-    const { Poppler } = await import('node-poppler');
-    const poppler = new Poppler();
-    
-    // 2. Panggil pdfInfo
-    const info = await poppler.pdfInfo(filePath);
+    //const info = await pdfinfo(filePath);
+    //const info = await poppler.pdfinfo(filePath);
+    // INI YANG BENAR
+    //const info = await poppler.default.pdfinfo(filePath);
+
+    const poppler = await import('pdf-poppler');
+    const info = await poppler.pdfinfo(filePath); // Panggil langsung
+    const pagesMatch = info.match(/Pages:\s*(\d+)/);
+    const titleMatch = info.match(/Title:\s*(.+)/);
 
     return {
-      total_pages: info.pages, // 3. Dapatkan jumlah halaman
-      title: info.title || path.basename(filePath) // 4. Dapatkan judul
+      total_pages: pagesMatch ? parseInt(pagesMatch[1], 10) : 0,
+      title: titleMatch ? titleMatch[1] : path.basename(filePath)
     };
   } catch (error) {
     console.error("PDF metadata extraction failed:", error);
+    // Fallback jika metadata gagal diekstrak
     return { total_pages: 0, title: path.basename(filePath) };
   }
 };

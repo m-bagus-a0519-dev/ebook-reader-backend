@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const bookSchema = new mongoose.Schema({
   // _id dibuat otomatis oleh MongoDB
+  _id: { type: String, required: true }, // <-- TAMBAHKAN BARIS INI
   title: { type: String, required: true },
   file_name: { type: String, required: true },
   file_type: { type: String, enum: ['pdf', 'epub'], required: true },
