@@ -3,22 +3,51 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const session = require('express-session');
+
+// --- 1. Impor Rute ---
 const bookRoutes = require('./routes/bookRoutes');
+const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 8001;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// --- 2. Atur View Engine (EJS) ---
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
 
-// Sajikan file statis (cover & buku) dari direktori uploads
+// --- 3. Atur Middleware (Urutan Sangat Penting) ---
+
+// (A) Middleware Global (CORS, Body Parsers)
+// Ini harus dijalankan pertama
+app.use(cors());
+app.use(express.json()); // Untuk API React (JSON)
+app.use(express.urlencoded({ extended: true })); // Untuk Form Admin (EJS)
+
+// (B) Middleware Sesi (HARUS SEBELUM RUTE ADMIN)
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'ganti_ini_dengan_rahasia_lain',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { 
+    secure: false, // Set 'true' jika Anda menggunakan HTTPS
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 // 1 jam
+  } 
+}));
+
+// (C) Sajikan File Statis (Uploads)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
-app.use('/api/books', bookRoutes);
 
-// Koneksi ke MongoDB
+// --- 4. Gunakan Rute (HARUS SETELAH SEMUA MIDDLEWARE) ---
+app.use('/api/books', bookRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/admin', adminRoutes); 
+
+
+// --- 5. Koneksi DB dan Jalankan Server ---
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
