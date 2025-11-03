@@ -49,7 +49,7 @@ app.use(session({
 }));
 
 // (C) Sajikan File Statis (Uploads)
-//app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
 // --- 4. Gunakan Rute (HARUS SETELAH SEMUA MIDDLEWARE) ---

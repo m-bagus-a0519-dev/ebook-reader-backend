@@ -16,24 +16,6 @@ const router = express.Router();
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Di bagian atas file routes/bookRoutes.js
-const cloudinary = require('cloudinary').v2;
-const fs = require('fs').promises; // Kita butuh 'fs.promises' untuk unlink
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-const Book = require('../models/bookModel');
-// ...impor Anda yang lain (protect, upload, dll)
-
-// Pastikan Cloudinary dikonfigurasi di server.js atau di sini:
-// cloudinary.config({ 
-//   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
-//   api_key: process.env.CLOUDINARY_API_KEY, 
-//   api_secret: process.env.CLOUDINARY_API_SECRET,
-//   secure: true
-// });
-
-// ... (Router Anda) ...
-
 // POST /api/books/upload
 router.post('/upload', protect, upload.single('file'), async (req, res) => {
   if (!req.file) {
@@ -42,39 +24,35 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
 
   const { buffer, originalname, size } = req.file;
 
-  const validation = await validateFile(buffer); // (Asumsi fungsi ini ada)
+  const validation = await validateFile(buffer);
   if (!validation.isValid) {
     return res.status(400).json({ success: false, error: validation.error });
   }
 
-  // --- 1. Buat File Temporer (Sama seperti sebelumnya) ---
-  const bookId = uuidv4(); // ID unik untuk nama file
+  const bookId = uuidv4();
   const fileExt = path.extname(originalname);
   const uniqueFilename = `${bookId}_original${fileExt}`;
-  
-  // Tentukan path temporer
-  // (Pastikan UPLOAD_DIR adalah path yang dapat ditulis di server, misal './temp')
-  const tempLocalPdfPath = path.join(UPLOAD_DIR, 'books', uniqueFilename);
-  await fs.writeFile(tempLocalPdfPath, buffer);
+  const filePath = path.join(UPLOAD_DIR, 'books', uniqueFilename);
+  await fs.writeFile(filePath, buffer);
 
   const fileType = validation.mime === 'application/pdf' ? 'pdf' : 'epub';
   let metadata;
   if (fileType === 'pdf') {
-    metadata = await extractPdfMetadata(tempLocalPdfPath); // (Asumsi fungsi ini ada)
+    metadata = await extractPdfMetadata(filePath);
   } else {
-    metadata = await extractEpubMetadata(tempLocalPdfPath); // (Asumsi fungsi ini ada)
+    metadata = await extractEpubMetadata(filePath);
   }
 
-  // --- 2. Buat Sampul Temporer (Sama seperti sebelumnya) ---
   let coverFilename = `${bookId}.jpg`;
-  const coverDir = path.join(UPLOAD_DIR, 'covers');
-  const tempLocalCoverPath = path.join(coverDir, coverFilename);
 
   if (fileType === 'pdf') {
     try {
       const { Poppler } = await import('node-poppler');
       const poppler = new Poppler();
+
+      const coverDir = path.join(UPLOAD_DIR, 'covers');
       const outputPathPrefix = path.join(coverDir, `${bookId}`);
+
       const options = {
         jpegFile: true,
         singleFile: true,
@@ -82,56 +60,26 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
         lastPageToConvert: 1
       };
       
-      console.log(`[Debug] Attempting to generate temp cover for: ${tempLocalPdfPath}`);
-      await poppler.pdfToCairo(tempLocalPdfPath, outputPathPrefix, options);
-      console.log(`[Debug] Temp cover generated: ${tempLocalCoverPath}`);
+      console.log(`[Debug] Attempting to generate cover for: ${filePath}`);
+      await poppler.pdfToCairo(filePath, outputPathPrefix, options);
+      coverFilename = `${bookId}.jpg`; 
+      console.log(`[Debug] Cover generated successfully: ${coverFilename}`);
     } catch (err) {
       console.error("Cover generation failed:", err.message);
-      // Hapus PDF temporer jika cover gagal
-      await fs.unlink(tempLocalPdfPath); 
-      return res.status(500).json({ success: false, error: "Cover generation failed." });
     }
   }
 
-  // --- 3. Upload ke Cloudinary (LOGIKA BARU) ---
-  let pdfUploadResult;
-  let coverUploadResult;
-  try {
-    console.log('[Cloudinary] Uploading PDF...');
-    pdfUploadResult = await cloudinary.uploader.upload(tempLocalPdfPath, {
-      resource_type: "raw", // 'raw' atau 'auto' untuk PDF
-      folder: "ebook-reader/books", // Folder di Cloudinary
-      public_id: bookId // Gunakan ID unik kita
-    });
-
-    console.log('[Cloudinary] Uploading Cover...');
-    coverUploadResult = await cloudinary.uploader.upload(tempLocalCoverPath, {
-      resource_type: "image",
-      folder: "ebook-reader/covers", // Folder di Cloudinary
-      public_id: bookId // Gunakan ID unik yang sama
-    });
-
-  } catch (uploadError) {
-    console.error('[Cloudinary Upload Error]:', uploadError.message);
-    // Hapus file temporer jika upload cloud gagal
-    await fs.unlink(tempLocalPdfPath);
-    await fs.unlink(tempLocalCoverPath);
-    return res.status(500).json({ success: false, error: "Failed to upload files to cloud storage." });
-  }
-
-  // --- 4. Simpan URL Cloudinary ke DB (LOGIKA DIMODIFIKASI) ---
   try {
     console.log('[Debug] Creating book with user_id:', req.user._id);
     
     const newBook = new Book({
-      // Kita tidak set _id, biarkan Mongoose yang buat
       user_id: req.user._id,
       title: req.body.title || metadata.title,
       file_name: originalname,
       file_type: fileType,
-      file_path: pdfUploadResult.secure_url,     // <-- MODIFIKASI: URL dari Cloudinary
+      file_path: `/uploads/books/${uniqueFilename}`,
       file_size: size,
-      cover_image: coverUploadResult.secure_url, // <-- MODIFIKASI: URL dari Cloudinary
+      cover_image: `/uploads/covers/${coverFilename}`, 
       total_pages: metadata.total_pages || 0,
       category: req.body.category || 'menu_book',
     });
@@ -140,20 +88,9 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
     const savedBook = await newBook.save();
     console.log('[Debug] Book saved successfully with _id:', savedBook._id);
     
-    // --- 5. Bersihkan File Temporer (LOGIKA BARU) ---
-    try {
-      await fs.unlink(tempLocalPdfPath);
-      await fs.unlink(tempLocalCoverPath);
-      console.log('[Debug] Temporary local files deleted.');
-    } catch (cleanupError) {
-      console.error('[Cleanup Error] Could not delete temp files:', cleanupError.message);
-      // Jangan gagalkan request jika cleanup gagal, cukup catat
-    }
-
     res.status(200).json({ success: true, book: savedBook });
   } catch (error) {
-    console.error('[DB Save Error]:', error.message);
-    // TODO: Hapus file dari Cloudinary jika penyimpanan DB gagal (rollback)
+    console.error('[Upload Error]:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
