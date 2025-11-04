@@ -1,17 +1,14 @@
-// -------------------------------
-// server.js
-// -------------------------------
-
-// --- 1. Import Dependencies ---
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
+
+
+// --- folder cloudinary ---
 const cloudinary = require('cloudinary').v2;
 
-// --- 2. Konfigurasi Cloudinary ---
 cloudinary.config({ 
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
   api_key: process.env.CLOUDINARY_API_KEY, 
@@ -19,57 +16,55 @@ cloudinary.config({
   secure: true
 });
 
-// --- 3. Import Routes ---
+// --- 1. Impor Rute ---
 const bookRoutes = require('./routes/bookRoutes');
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
-// --- 4. Inisialisasi Aplikasi ---
 const app = express();
+const PORT = process.env.PORT || 8001;
 
-// --- 5. Konfigurasi View Engine ---
+// --- 2. Atur View Engine (EJS) ---
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// --- 6. Middleware Global ---
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// --- 3. Atur Middleware (Urutan Sangat Penting) ---
 
-// --- 7. Middleware Session ---
+// (A) Middleware Global (CORS, Body Parsers)
+// Ini harus dijalankan pertama
+app.use(cors());
+app.use(express.json()); // Untuk API React (JSON)
+app.use(express.urlencoded({ extended: true })); // Untuk Form Admin (EJS)
+
+// (B) Middleware Sesi (HARUS SEBELUM RUTE ADMIN)
 app.use(session({
   secret: process.env.SESSION_SECRET || 'ganti_ini_dengan_rahasia_lain',
   resave: false,
   saveUninitialized: true,
   cookie: { 
-    secure: false, // set true jika sudah pakai HTTPS
+    secure: false, // Set 'true' jika Anda menggunakan HTTPS
     httpOnly: true,
     maxAge: 1000 * 60 * 60 // 1 jam
   } 
 }));
 
-// --- 8. Static Files (opsional) ---
-// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// (C) Sajikan File Statis (Uploads)
+//app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// --- 9. Gunakan Routes ---
+
+// --- 4. Gunakan Rute (HARUS SETELAH SEMUA MIDDLEWARE) ---
 app.use('/api/books', bookRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/admin', adminRoutes);
+app.use('/admin', adminRoutes); 
 
-// --- 10. Koneksi Database dan Jalankan Server ---
+
+// --- 5. Koneksi DB dan Jalankan Server ---
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-})
-.then(() => {
+}).then(() => {
   console.log('Connected to MongoDB');
-
-  // Pilih host otomatis: 0.0.0.0 di Render, localhost di lokal
-  const host = process.env.RENDER ? '0.0.0.0' : 'localhost';
-  const port = process.env.PORT || 8001;
-
-  app.listen(port, host, () => {
-    console.log(`Server is running on http://${host}:${port}`);
+  app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
   });
-})
-.catch(err => console.error('Could not connect to MongoDB', err));
+}).catch(err => console.error('Could not connect to MongoDB', err));
