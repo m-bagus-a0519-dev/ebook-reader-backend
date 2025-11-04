@@ -60,6 +60,7 @@ if (fileType === 'pdf') {
     const coverDir = path.join(UPLOAD_DIR, 'covers');
     // UBAH BARIS INI: Hapus .jpg dari nama path
     const outputPathPrefix = path.join(coverDir, `${bookId}`);
+
     // 2. Opsi untuk pdfToCairo (method yang benar)
     const options = {
       jpegFile: true,        // Output sebagai JPEG
