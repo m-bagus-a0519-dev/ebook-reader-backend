@@ -120,7 +120,7 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
 
     // --- 4. Simpan URL Cloudinary ke DB ---
     const newBook = new Book({
-      //_id: bookId, // Gunakan bookId sebagai _id
+      _id: bookId, // Gunakan bookId sebagai _id
       user_id: req.user._id,
       title: req.body.title || metadata.title || originalname.replace(/\.[^/.]+$/, ""),
       file_name: originalname,
